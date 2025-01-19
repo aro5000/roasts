@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
+    integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+
+<script src="https://unpkg.com/mustache@4.2.0/mustache.js"
+    integrity="sha384-w1w4OJZe53/hPslZL3huM7kr/RQ+IXfaVeO5Tx0boUDt0ZTA8dwJ5OjxjpWOtw14"
+    crossorigin="anonymous"></script>
+<style>
+    .themed-grid-col {
+        padding-top: 15px;
+        padding-bottom: 15px;
+        background-color: rgba(218, 121, 83, 0.15);
+        border: 1px solid rgba(214, 118, 80, .2);
+    }
+</style>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Roast Viewer</title>
+</head>
+
+<body class="py-4">
+    <div class="container">
+        <h1><a href="https://github.com/aro5000/roasts"><img src="logo.jpeg"></a> Roast Viewer</h1>
+        <div class="container" id="data">
+        </div>
+</body>
+
+<script>
+    template = `
+<div class="row">
+    <div class="col-3 themed-grid-col">
+        Roast Date:
+    </div>
+    <div class="col themed-grid-col">
+        {{uploadTime}}
+    </div>
+</div>
+<div class="row">
+    <div class="col-3 themed-grid-col">
+        Bean Name:
+    </div>
+    <div class="col themed-grid-col">
+        {{beanName}}
+    </div>
+</div>
+<div class="row">
+    <div class="col-3 themed-grid-col">
+        Taste Notes:
+    </div>
+    <div class="col themed-grid-col">
+        {{tasteNotes}}
+    </div>
+</div>
+<div class="row">
+    <div class="col-3 themed-grid-col">
+        Green Bean Weight (grams):
+    </div>
+    <div class="col themed-grid-col">
+        {{greenBeanWeight}}
+    </div>
+</div>
+<div class="row">
+    <div class="col-3 themed-grid-col">
+        Roasted Bean Weight (grams):
+    </div>
+    <div class="col themed-grid-col">
+        {{roastedBeanWeight}}
+    </div>
+</div>
+<div class="row">
+    <div class="col-3 themed-grid-col">
+        Bean Purchase Link:
+    </div>
+    <div class="col themed-grid-col">
+        <a href="{{purchaseUrl}}">{{purchaseUrl}}</a>
+    </div>
+</div>
+<div class="row">
+    <div class="col-3 themed-grid-col">
+        Weight Loss:
+    </div>
+    <div class="col themed-grid-col">
+        {{weightLoss}}
+    </div>
+</div>
+<div class="row">
+    <div class="col themed-grid-col text-center">
+        <img src="https://aro-coffee.storage.googleapis.com/{{id}}/beans-image" alt="beans image">
+    </div>
+</div>
+<div class="row">
+    <div class="col themed-grid-col text-center">
+        <img src="https://aro-coffee.storage.googleapis.com/{{id}}/roast-data-image" alt="roast data image">
+    </div>
+</div>
+`
+    async function getData(template) {
+        const hashId = window.location.hash.replace("#", "")
+        if (hashId === "") {
+            document.getElementById("data").innerHTML = "<h3>Welcome to the Roast Viewer!<br>If you had a valid link, data would show below</h3>"
+        } else {
+            resp = await fetch("https://aro-coffee.storage.googleapis.com/" + hashId + "/data.json")
+            if (resp.status != 200) {
+                document.getElementById("data").innerHTML = "<h3>👀️ Invalid Link!</h3>"
+            } else {
+                jsonData = await resp.json()
+                document.getElementById("data").innerHTML = Mustache.render(template, jsonData)
+            }
+        }
+    }
+
+    getData(template)
+</script>
+
+</html>

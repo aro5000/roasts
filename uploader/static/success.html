@@ -1,0 +1,21 @@
+<div class="row py-2">
+  <div class="col form-group">
+    <label for="url" class="form-label">URL</label>
+    <input type="text" class="form-control" id="url" value="{{.Url}}" readonly>
+  </div>
+  <div class="col form-group">
+    <br>
+    <button id="copy-button" class="btn btn-primary mb-2 btn-block mt-1" onclick="copyLink()">copy</button>
+  </div>
+</div>
+<div class="row py-2">
+  <div class="col">
+    <img src="data:image/png;base64,{{.QrImage}}" , alt="qr code" />
+  </div>
+  <script>
+    function copyLink() {
+      let url = document.getElementById("url");
+      url.select();
+      document.execCommand('copy');
+    }
+  </script>

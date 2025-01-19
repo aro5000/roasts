@@ -1,0 +1,45 @@
+{{define "inputs"}}
+<form hx-post="/upload" hx-swap="outerHTML" hx-encoding='multipart/form-data'>
+    <div class="row py-2">
+        <div class="col form-group">
+            <label for="beanName" class="form-label">Bean Name</label>
+            <input type="text" class="form-control" name="beanName">
+        </div>
+        <div class="col form-group">
+            <label class="form-label">Taste Notes</label>
+            <input type="text" class="form-control" name="tasteNotes">
+        </div>
+    </div>
+    <div class="row py-2">
+        <div class="col form-group">
+            <label for="greenBeanWeight" class="form-label">Green Bean Weight (grams)</label>
+            <input class="form-control" type="text" name="greenBeanWeight">
+        </div>
+        <div class="col form-group">
+            <label for="roastBeanWeight" class="form-label">Roasted Bean Weight (grams)</label>
+            <input class="form-control" type="text" name="roastBeanWeight">
+        </div>
+    </div>
+    <div class="row py-2">
+        <div class="col form-group">
+            <label for="purchaseUrl" class="form-label">Bean Purchase URL</label>
+            <input class="form-control" type="text" name="purchaseUrl">
+        </div>
+    </div>
+    <div class="row py-2">
+        <div class="col form-group">
+            <label for="beansImage" class="form-label">Beans Image</label>
+            <input class="form-control" type="file" name="beansImage" id="beansImage">
+        </div>
+        <div class="col form-group">
+            <label for="roastDataImage" class="form-label">Roast Data Image</label>
+            <input class="form-control" type="file" name="roastDataImage" id="roastDataImage">
+        </div>
+    </div>
+    <div class="row py-2">
+        <div class="col">
+            <button type="submit" class="btn btn-primary m-1">Upload</button>
+        </div>
+    </div>
+</form>
+{{end}}
