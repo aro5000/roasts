@@ -51,6 +51,7 @@ type data struct {
 	UploadTime        string `json:"uploadTime"`
 	Id                string `json:"id"`
 	WeightLoss        string `json:"weightLoss"`
+	Roastnotes        string `json:"roastNotes,omitempty"`
 }
 
 type success struct {
@@ -94,6 +95,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	d.GreenBeanWeight = r.FormValue("greenBeanWeight")
 	d.RoastedBeanWeight = r.FormValue("roastBeanWeight")
 	d.PurchaseUrl = r.FormValue("purchaseUrl")
+	d.Roastnotes = r.FormValue("roastNotes")
 	d.UploadTime = now.Format(time.RFC822)
 	d.Id = id
 	d.WeightLoss = calculateWeightLoss(d.GreenBeanWeight, d.RoastedBeanWeight)

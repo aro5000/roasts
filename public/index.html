@@ -13,6 +13,10 @@
         background-color: rgba(218, 121, 83, 0.15);
         border: 1px solid rgba(214, 118, 80, .2);
     }
+
+    .multi-line {
+        white-space: pre-line;
+    }
 </style>
 
 <head>
@@ -86,6 +90,16 @@
         {{weightLoss}}
     </div>
 </div>
+{{#roastNotes}}
+<div class="row">
+    <div class="col-md-3 themed-grid-col multi-line">
+        Roast Notes:
+    </div>
+    <div class="col-md themed-grid-col multi-line">
+        {{roastNotes}}
+    </div>
+</div>
+{{/roastNotes}}
 <div class="row">
     <div class="col themed-grid-col text-center">
         <img src="https://aro-coffee.storage.googleapis.com/{{id}}/beans-image" class="img-fluid" alt="beans image">
