@@ -36,6 +36,9 @@ var defaultImg []byte
 //go:embed static/success.html
 var successHtml string
 
+//go:embed static/shutdown.html
+var shutdownHtml string
+
 var port string = ":5000"
 var client *storage.Client
 var ctx context.Context = context.Background()
@@ -52,6 +55,7 @@ type data struct {
 	Id                string `json:"id"`
 	WeightLoss        string `json:"weightLoss"`
 	Roastnotes        string `json:"roastNotes,omitempty"`
+	Error             string `json:"-"`
 }
 
 type success struct {
@@ -69,6 +73,7 @@ func main() {
 	go openBrowser()
 	http.HandleFunc("/", serveRoot)
 	http.HandleFunc("/upload", upload)
+	http.HandleFunc("/shutdown", shutdown)
 
 	fmt.Println("Starting server on", port)
 	http.ListenAndServe(port, nil)
@@ -77,6 +82,13 @@ func main() {
 func serveRoot(w http.ResponseWriter, r *http.Request) {
 	tmpl, _ := template.New("").Parse(index + templates)
 	tmpl.Execute(w, nil)
+}
+
+func shutdown(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprint(w, shutdownHtml)
+	go func() {
+		os.Exit(0)
+	}()
 }
 
 func upload(w http.ResponseWriter, r *http.Request) {
@@ -107,12 +119,17 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	// upload JSON data
 	dataObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/data.json", id))
 	dataWriter := dataObj.NewWriter(ctx)
-	defer dataWriter.Close()
 
 	_, err = io.Copy(dataWriter, dataFile)
 	if err != nil {
 		tmpl, _ := template.New("").Parse(inputs + templates)
-		tmpl.Execute(w, err.Error())
+		tmpl.Execute(w, data{Error: err.Error()})
+		return
+	}
+	err = dataWriter.Close()
+	if err != nil {
+		tmpl, _ := template.New("").Parse(inputs + templates)
+		tmpl.Execute(w, data{Error: err.Error()})
 		return
 	}
 
@@ -125,12 +142,17 @@ func upload(w http.ResponseWriter, r *http.Request) {
 
 	beansImgObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/beans-image", id))
 	beansImageWriter := beansImgObj.NewWriter(ctx)
-	defer beansImageWriter.Close()
 
 	_, err = io.Copy(beansImageWriter, beansImageFile)
 	if err != nil {
 		tmpl, _ := template.New("").Parse(inputs + templates)
-		tmpl.Execute(w, err.Error())
+		tmpl.Execute(w, data{Error: err.Error()})
+		return
+	}
+	err = beansImageWriter.Close()
+	if err != nil {
+		tmpl, _ := template.New("").Parse(inputs + templates)
+		tmpl.Execute(w, data{Error: err.Error()})
 		return
 	}
 
@@ -143,12 +165,17 @@ func upload(w http.ResponseWriter, r *http.Request) {
 
 	roastDataObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/roast-data-image", id))
 	roastDataWriter := roastDataObj.NewWriter(ctx)
-	defer roastDataWriter.Close()
 
 	_, err = io.Copy(roastDataWriter, roastDataImageFile)
 	if err != nil {
 		tmpl, _ := template.New("").Parse(inputs + templates)
-		tmpl.Execute(w, err.Error())
+		tmpl.Execute(w, data{Error: err.Error()})
+		return
+	}
+	err = roastDataWriter.Close()
+	if err != nil {
+		tmpl, _ := template.New("").Parse(inputs + templates)
+		tmpl.Execute(w, data{Error: err.Error()})
 		return
 	}
 
@@ -156,7 +183,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	imageString, err := QrBase64String(fullUrl)
 	if err != nil {
 		tmpl, _ := template.New("").Parse(inputs + templates)
-		tmpl.Execute(w, err.Error())
+		tmpl.Execute(w, data{Error: err.Error()})
 		return
 	}
 	s := success{

@@ -1,5 +1,13 @@
 {{define "inputs"}}
 <form hx-post="/upload" hx-swap="outerHTML" hx-encoding='multipart/form-data'>
+    {{ if .Id }}
+    <div class="row py-2">
+        <div class="col form-group">
+            <label for="id" class="form-label">Roast ID</label>
+            <input type="text" class="form-control" name="id" readonly>
+        </div>
+    </div>
+    {{ end }}
     <div class="row py-2">
         <div class="col form-group">
             <label for="beanName" class="form-label">Bean Name</label>
@@ -48,4 +56,20 @@
         </div>
     </div>
 </form>
+{{end}}
+
+{{define "nav"}}
+<nav class="navbar navbar-expand-lg">
+    <a class="navbar-brand" href="#">Uploader</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavAltMarkup"
+        aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
+        <div class="navbar-nav">
+            <a class="nav-link" href="/shutdown">Shutdown</a>
+        </div>
+    </div>
+</nav>
+
 {{end}}
