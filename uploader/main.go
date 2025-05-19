@@ -39,6 +39,9 @@ var successHtml string
 //go:embed static/shutdown.html
 var shutdownHtml string
 
+//go:embed static/edit.html
+var editHtml string
+
 var port string = ":5000"
 var client *storage.Client
 var ctx context.Context = context.Background()
@@ -74,6 +77,8 @@ func main() {
 	http.HandleFunc("/", serveRoot)
 	http.HandleFunc("/upload", upload)
 	http.HandleFunc("/shutdown", shutdown)
+	http.HandleFunc("/edit", edit)
+	http.HandleFunc("/getData", getData)
 
 	fmt.Println("Starting server on", port)
 	http.ListenAndServe(port, nil)
@@ -87,8 +92,44 @@ func serveRoot(w http.ResponseWriter, r *http.Request) {
 func shutdown(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, shutdownHtml)
 	go func() {
+		fmt.Println("[!] Shutting down server...")
 		os.Exit(0)
 	}()
+}
+
+func edit(w http.ResponseWriter, r *http.Request) {
+	tmpl, _ := template.New("").Parse(editHtml + templates)
+	tmpl.Execute(w, nil)
+}
+
+func getData(w http.ResponseWriter, r *http.Request) {
+	reload := `
+	<script>location.reload()</script>
+	`
+	var d data
+
+	id := r.URL.Query().Get("roastId")
+
+	dataObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/data.json", id))
+	dataReader, err := dataObj.NewReader(ctx)
+	if err != nil {
+		fmt.Fprint(w, reload)
+		return
+	}
+	raw, err := io.ReadAll(dataReader)
+	if err != nil {
+		fmt.Fprint(w, reload)
+		return
+	}
+
+	err = json.Unmarshal(raw, &d)
+	if err != nil {
+		fmt.Fprint(w, reload)
+		return
+	}
+
+	tmpl, _ := template.New("").Parse(inputs + templates)
+	tmpl.Execute(w, d)
 }
 
 func upload(w http.ResponseWriter, r *http.Request) {
