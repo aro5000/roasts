@@ -112,10 +112,12 @@ func getData(w http.ResponseWriter, r *http.Request) {
 
 	dataObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/data.json", id))
 	dataReader, err := dataObj.NewReader(ctx)
+	defer dataReader.Close()
 	if err != nil {
 		fmt.Fprint(w, reload)
 		return
 	}
+	dataReader.Attrs.CacheControl = "no-cache, no-store, max-age=0"
 	raw, err := io.ReadAll(dataReader)
 	if err != nil {
 		fmt.Fprint(w, reload)
@@ -133,8 +135,7 @@ func getData(w http.ResponseWriter, r *http.Request) {
 }
 
 func upload(w http.ResponseWriter, r *http.Request) {
-	id := getShortUuid()
-	fmt.Println("ID:", id)
+	var id string
 	err := r.ParseMultipartForm(100 * 1024 * 1024) // 100MB
 	if err != nil {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
@@ -150,8 +151,16 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	d.PurchaseUrl = r.FormValue("purchaseUrl")
 	d.Roastnotes = r.FormValue("roastNotes")
 	d.UploadTime = now.Format(time.RFC822)
-	d.Id = id
 	d.WeightLoss = calculateWeightLoss(d.GreenBeanWeight, d.RoastedBeanWeight)
+
+	formId := r.FormValue("id")
+	if formId == "" {
+		id = getShortUuid()
+	} else {
+		id = formId
+	}
+	d.Id = id
+	fmt.Println("ID:", id)
 
 	jsonData, err := json.Marshal(d)
 	var dataFile io.Reader
