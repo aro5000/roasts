@@ -1,6 +1,6 @@
-{{ if . }}
+{{ if .Error }}
 <script>
-    alert("Error: {{.}}")
+    alert("Error: {{.Error}}")
 </script>
 {{ end }}
-{{template "inputs"}}
+{{template "inputs" .}}

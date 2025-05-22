@@ -22,7 +22,18 @@
         <h1>Roast Uploader</h1>
 
         <h2>Roast Data:</h2>
-        {{template "inputs"}}
+        <form hx-get="/getData" hx-swap="outerHTML">
+            <div class="row py-2">
+                <div class="col form-group">
+                    <label for="roastId" class="form-label">Roast ID to edit:</label>
+                    <input type="text" class="form-control" name="roastId">
+                </div>
+                <div class="col form-group">
+                    <br>
+                    <button type="submit" class="btn btn-primary m-1">Get Data</button>
+                </div>
+            </div>
+        </form>
     </div>
 </body>
 

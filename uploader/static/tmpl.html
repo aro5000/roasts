@@ -1,35 +1,43 @@
 {{define "inputs"}}
 <form hx-post="/upload" hx-swap="outerHTML" hx-encoding='multipart/form-data'>
+    {{ if .Id }}
+    <div class="row py-2">
+        <div class="col form-group">
+            <label for="id" class="form-label">Roast ID</label>
+            <input type="text" class="form-control" name="id" readonly value="{{.Id}}">
+        </div>
+    </div>
+    {{ end }}
     <div class="row py-2">
         <div class="col form-group">
             <label for="beanName" class="form-label">Bean Name</label>
-            <input type="text" class="form-control" name="beanName">
+            <input type="text" class="form-control" name="beanName" value="{{.BeanName}}">
         </div>
         <div class="col form-group">
             <label for="purchaseUrl" class="form-label">Bean Purchase URL</label>
-            <input class="form-control" type="text" name="purchaseUrl">
+            <input class="form-control" type="text" name="purchaseUrl" value="{{.PurchaseUrl}}">
         </div>
     </div>
     <div class="row py-2">
         <div class="col form-group">
             <label for="greenBeanWeight" class="form-label">Green Bean Weight (grams)</label>
-            <input class="form-control" type="text" name="greenBeanWeight">
+            <input class="form-control" type="text" name="greenBeanWeight" value="{{.GreenBeanWeight}}">
         </div>
         <div class="col form-group">
             <label for="roastBeanWeight" class="form-label">Roasted Bean Weight (grams)</label>
-            <input class="form-control" type="text" name="roastBeanWeight">
+            <input class="form-control" type="text" name="roastBeanWeight" value="{{.RoastedBeanWeight}}">
         </div>
     </div>
     <div class="row py-2">
         <div class="col form-group">
             <label class="form-label">Taste Notes</label>
-            <input type="text" class="form-control" name="tasteNotes">
+            <input type="text" class="form-control" name="tasteNotes" value="{{.TasteNotes}}">
         </div>
     </div>
     <div class="row py-2">
         <div class="col form-group">
             <label class="form-label">Roast Notes (optional)</label>
-            <textarea class="form-control" rows="5" name="roastNotes"></textarea>
+            <textarea class="form-control" rows="5" name="roastNotes">{{.Roastnotes}}</textarea>
         </div>
     </div>
     <div class="row py-2">
@@ -48,4 +56,21 @@
         </div>
     </div>
 </form>
+{{end}}
+
+{{define "nav"}}
+<nav class="navbar navbar-expand-lg">
+    <a class="navbar-brand" href="/">Uploader</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavAltMarkup"
+        aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
+        <div class="navbar-nav">
+            <a class="nav-link" href="/edit">Edit</a>
+            <a class="nav-link" href="/shutdown">Shutdown</a>
+        </div>
+    </div>
+</nav>
+
 {{end}}
