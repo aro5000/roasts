@@ -112,12 +112,11 @@ func getData(w http.ResponseWriter, r *http.Request) {
 
 	dataObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/data.json", id))
 	dataReader, err := dataObj.NewReader(ctx)
-	defer dataReader.Close()
 	if err != nil {
 		fmt.Fprint(w, reload)
 		return
 	}
-	dataReader.Attrs.CacheControl = "no-cache, no-store, max-age=0"
+
 	raw, err := io.ReadAll(dataReader)
 	if err != nil {
 		fmt.Fprint(w, reload)
@@ -125,6 +124,12 @@ func getData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = json.Unmarshal(raw, &d)
+	if err != nil {
+		fmt.Fprint(w, reload)
+		return
+	}
+
+	err = dataReader.Close()
 	if err != nil {
 		fmt.Fprint(w, reload)
 		return
@@ -163,8 +168,12 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("ID:", id)
 
 	jsonData, err := json.Marshal(d)
-	var dataFile io.Reader
-	dataFile = bytes.NewReader(jsonData)
+	if err != nil {
+		tmpl, _ := template.New("").Parse(inputs + templates)
+		tmpl.Execute(w, data{Error: err.Error()})
+		return
+	}
+	dataFile := bytes.NewReader(jsonData)
 
 	// upload JSON data
 	dataObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/data.json", id))
