@@ -9,16 +9,20 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/google/uuid"
 	qrcode "github.com/skip2/go-qrcode"
+	"google.golang.org/api/option"
+	"google.golang.org/api/sheets/v4"
 )
 
 //go:embed static/index.html
@@ -48,6 +52,32 @@ var ctx context.Context = context.Background()
 var bucket string = "aro-coffee"
 var baseUrl string = "https://aro.coffee/"
 
+var sheetsConfig = struct {
+	ID   string
+	Name string
+}{
+	ID:   "1GecWtEQMF6TjGsx7rKex3FZaETM9HPNo4Cv1mS2D8_w",
+	Name: "Inventory",
+}
+
+var googleSheetsService *sheets.Service
+var sheetsInitErr error
+
+func getSheetsService() (*sheets.Service, error) {
+	if googleSheetsService != nil {
+		return googleSheetsService, nil
+	}
+
+	sheetsSvc, err := sheets.NewService(ctx, option.WithScopes("https://www.googleapis.com/auth/spreadsheets.readonly"))
+	if err != nil {
+		sheetsInitErr = fmt.Errorf("sheets init failed: %w", err)
+		return nil, sheetsInitErr
+	}
+
+	googleSheetsService = sheetsSvc
+	return sheetsSvc, nil
+}
+
 type data struct {
 	BeanName          string `json:"beanName"`
 	TasteNotes        string `json:"tasteNotes"`
@@ -61,10 +91,33 @@ type data struct {
 	Error             string `json:"-"`
 }
 
+type beansResponse struct {
+	Beans []string `json:"beans"`
+}
+
+type beanRow struct {
+	BeanName    string `json:"beanName"`
+	PurchaseUrl string `json:"purchaseUrl"`
+	TasteNotes  string `json:"tasteNotes"`
+}
+
 type success struct {
 	Url     string
 	QrImage string
 }
+
+// defaultFile is a multipart.File that serves the default image
+type defaultFile struct {
+	*bytes.Reader
+}
+
+func (d defaultFile) Close() error      { return nil }
+func (d defaultFile) Size() int64       { return int64(len(defaultImg)) }
+func (d defaultFile) Seek(offset int64, whence int) (int64, error) {
+	return d.Reader.Seek(offset, whence)
+}
+
+var defaultFileInstance = defaultFile{bytes.NewReader(defaultImg)}
 
 func main() {
 	var err error
@@ -73,9 +126,28 @@ func main() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+
+	go func() {
+		svc, e := getSheetsService()
+		if e != nil {
+			fmt.Println("Sheets init warning:", e)
+			return
+		}
+		_, err := svc.Spreadsheets.Get(sheetsConfig.ID).Do()
+		if err != nil {
+			fmt.Printf("Sheets access check failed: %v\n", err)
+			fmt.Println("Make sure gcloud auth application-default login has been run")
+		} else {
+			fmt.Println("Sheets connected to:", sheetsConfig.Name)
+		}
+		_ = svc
+	}()
+
 	go openBrowser()
 	http.HandleFunc("/", serveRoot)
 	http.HandleFunc("/upload", upload)
+	http.HandleFunc("/beans", beansHandler)
+	http.HandleFunc("/beans/fill", beansFill)
 	http.HandleFunc("/shutdown", shutdown)
 	http.HandleFunc("/edit", edit)
 	http.HandleFunc("/getData", getData)
@@ -103,9 +175,6 @@ func edit(w http.ResponseWriter, r *http.Request) {
 }
 
 func getData(w http.ResponseWriter, r *http.Request) {
-	reload := `
-	<script>location.reload()</script>
-	`
 	var d data
 
 	id := r.URL.Query().Get("roastId")
@@ -113,25 +182,19 @@ func getData(w http.ResponseWriter, r *http.Request) {
 	dataObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/data.json", id))
 	dataReader, err := dataObj.NewReader(ctx)
 	if err != nil {
-		fmt.Fprint(w, reload)
+		fmt.Fprint(w, "reload-page")
 		return
 	}
+	defer dataReader.Close()
 
 	raw, err := io.ReadAll(dataReader)
 	if err != nil {
-		fmt.Fprint(w, reload)
+		fmt.Fprint(w, "reload-page")
 		return
 	}
 
-	err = json.Unmarshal(raw, &d)
-	if err != nil {
-		fmt.Fprint(w, reload)
-		return
-	}
-
-	err = dataReader.Close()
-	if err != nil {
-		fmt.Fprint(w, reload)
+	if err = json.Unmarshal(raw, &d); err != nil {
+		fmt.Fprint(w, "reload-page")
 		return
 	}
 
@@ -139,9 +202,138 @@ func getData(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, d)
 }
 
+func beansHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	query := strings.ToLower(r.URL.Query().Get("query"))
+
+	svc, err := getSheetsService()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var colA []string
+	br, err := svc.Spreadsheets.Values.BatchGet(sheetsConfig.ID).Ranges(
+		fmt.Sprintf("%s!A:A", sheetsConfig.Name),
+	).Do()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("sheets read error: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if len(br.ValueRanges) > 0 {
+		colA = flattenRange(br.ValueRanges[0])
+	}
+
+	var beans []string
+	for _, name := range colA {
+		name = strings.TrimSpace(name)
+		if name == "" || strings.EqualFold(name, "Bean Name") {
+			continue
+		}
+		if query == "" || strings.Contains(strings.ToLower(name), query) {
+			beans = append(beans, name)
+		}
+	}
+
+	json.NewEncoder(w).Encode(beansResponse{Beans: beans})
+}
+
+func beansFill(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		BeanName string `json:"beanName"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	svc, err := getSheetsService()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ranges := []string{
+		fmt.Sprintf("%s!A:A", sheetsConfig.Name),
+		fmt.Sprintf("%s!B:B", sheetsConfig.Name),
+		fmt.Sprintf("%s!E:E", sheetsConfig.Name),
+	}
+	br, err := svc.Spreadsheets.Values.BatchGet(sheetsConfig.ID).Ranges(ranges...).Do()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("sheets read error: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	var colA, colB, colE []string
+	if br.ValueRanges != nil {
+		if len(br.ValueRanges) > 0 {
+			colA = flattenRange(br.ValueRanges[0])
+		}
+		if len(br.ValueRanges) > 1 {
+			colB = flattenRange(br.ValueRanges[1])
+		}
+		if len(br.ValueRanges) > 2 {
+			colE = flattenRange(br.ValueRanges[2])
+		}
+	}
+
+	for i, name := range colA {
+		name = strings.TrimSpace(name)
+		if name == "" || strings.EqualFold(name, "Bean Name") {
+			continue
+		}
+		if strings.EqualFold(name, req.BeanName) {
+			buyUrl := ""
+			taste := ""
+			if i < len(colB) && colB[i] != "" {
+				buyUrl = strings.TrimSpace(colB[i])
+			}
+			if i < len(colE) && colE[i] != "" {
+				taste = strings.TrimSpace(colE[i])
+			}
+			json.NewEncoder(w).Encode(&beanRow{
+				BeanName:    name,
+				PurchaseUrl: buyUrl,
+				TasteNotes:  taste,
+			})
+			return
+		}
+	}
+
+	w.WriteHeader(http.StatusNotFound)
+	json.NewEncoder(w).Encode(map[string]string{"error": "bean not found"})
+}
+
+func flattenRange(sr *sheets.ValueRange) []string {
+	if sr == nil || sr.Values == nil {
+		return nil
+	}
+	var result []string
+	for _, row := range sr.Values {
+		if len(row) > 0 {
+			result = append(result, fmt.Sprintf("%v", row[0]))
+		}
+	}
+	return result
+}
+
 func upload(w http.ResponseWriter, r *http.Request) {
 	var id string
-	err := r.ParseMultipartForm(100 * 1024 * 1024) // 100MB
+	err := r.ParseMultipartForm(100 * 1024 * 1024)
 	if err != nil {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
 		fmt.Fprint(w, "Upload too large")
@@ -175,7 +367,6 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	}
 	dataFile := bytes.NewReader(jsonData)
 
-	// upload JSON data
 	dataObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/data.json", id))
 	dataWriter := dataObj.NewWriter(ctx)
 
@@ -192,50 +383,50 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Upload beans image
-	var beansImageFile io.Reader
-	beansImageFile, _, err = r.FormFile("beansImage")
-	if err != nil {
-		beansImageFile = bytes.NewReader(defaultImg)
+	// Beans image
+	{
+		var beansImageFile multipart.File
+		beansImageFile, _, err = r.FormFile("beansImage")
+		if err != nil {
+			beansImageFile = defaultFileInstance
+		}
+		beansImgObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/beans-image", id))
+		beansImageWriter := beansImgObj.NewWriter(ctx)
+		_, err = io.Copy(beansImageWriter, beansImageFile)
+		if err != nil {
+			tmpl, _ := template.New("").Parse(inputs + templates)
+			tmpl.Execute(w, data{Error: err.Error()})
+			return
+		}
+		err = beansImageWriter.Close()
+		if err != nil {
+			tmpl, _ := template.New("").Parse(inputs + templates)
+			tmpl.Execute(w, data{Error: err.Error()})
+			return
+		}
 	}
 
-	beansImgObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/beans-image", id))
-	beansImageWriter := beansImgObj.NewWriter(ctx)
-
-	_, err = io.Copy(beansImageWriter, beansImageFile)
-	if err != nil {
-		tmpl, _ := template.New("").Parse(inputs + templates)
-		tmpl.Execute(w, data{Error: err.Error()})
-		return
-	}
-	err = beansImageWriter.Close()
-	if err != nil {
-		tmpl, _ := template.New("").Parse(inputs + templates)
-		tmpl.Execute(w, data{Error: err.Error()})
-		return
-	}
-
-	// Upload roast data image
-	var roastDataImageFile io.Reader
-	roastDataImageFile, _, err = r.FormFile("roastDataImage")
-	if err != nil {
-		roastDataImageFile = bytes.NewReader(defaultImg)
-	}
-
-	roastDataObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/roast-data-image", id))
-	roastDataWriter := roastDataObj.NewWriter(ctx)
-
-	_, err = io.Copy(roastDataWriter, roastDataImageFile)
-	if err != nil {
-		tmpl, _ := template.New("").Parse(inputs + templates)
-		tmpl.Execute(w, data{Error: err.Error()})
-		return
-	}
-	err = roastDataWriter.Close()
-	if err != nil {
-		tmpl, _ := template.New("").Parse(inputs + templates)
-		tmpl.Execute(w, data{Error: err.Error()})
-		return
+	// Roast data image
+	{
+		var roastDataImageFile multipart.File
+		roastDataImageFile, _, err = r.FormFile("roastDataImage")
+		if err != nil {
+			roastDataImageFile = defaultFileInstance
+		}
+		roastDataObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/roast-data-image", id))
+		roastDataWriter := roastDataObj.NewWriter(ctx)
+		_, err = io.Copy(roastDataWriter, roastDataImageFile)
+		if err != nil {
+			tmpl, _ := template.New("").Parse(inputs + templates)
+			tmpl.Execute(w, data{Error: err.Error()})
+			return
+		}
+		err = roastDataWriter.Close()
+		if err != nil {
+			tmpl, _ := template.New("").Parse(inputs + templates)
+			tmpl.Execute(w, data{Error: err.Error()})
+			return
+		}
 	}
 
 	fullUrl := fmt.Sprintf("%s#%s", baseUrl, id)
@@ -259,7 +450,6 @@ func getShortUuid() string {
 }
 
 func QrBase64String(url string) (string, error) {
-	var png []byte
 	png, err := qrcode.Encode(url, qrcode.Medium, 256)
 	if err != nil {
 		return "", err
@@ -267,8 +457,6 @@ func QrBase64String(url string) (string, error) {
 	return base64.StdEncoding.EncodeToString(png), nil
 }
 
-// take the string values, convert them to floats
-// and return the weight loss and roast level
 func calculateWeightLoss(greenWeight, roastWeight string) string {
 	gw, err := strconv.ParseFloat(greenWeight, 64)
 	if err != nil {
@@ -279,39 +467,10 @@ func calculateWeightLoss(greenWeight, roastWeight string) string {
 		return "unknown"
 	}
 	weightLoss := (gw - rw) / gw * 100
-
-	// for now this doesn't seem very accurate for my roaster,
-	// but I might revisit later
-	// https://library.sweetmarias.com/how-to-calculate-weight-loss-in-coffee-roasting/
-
-	//var degreeOfRoast string
-	//switch {
-	//case weightLoss <= 11.5:
-	//	degreeOfRoast = "1st crack (extremely light)"
-	//case weightLoss >= 11.5 && weightLoss < 12.7:
-	//	degreeOfRoast = "City-"
-	//case weightLoss >= 12.7 && weightLoss < 13.3:
-	//	degreeOfRoast = "City"
-	//case weightLoss >= 13.3 && weightLoss < 14.5:
-	//	degreeOfRoast = "City+"
-	//case weightLoss >= 14.5 && weightLoss < 15.1:
-	//	degreeOfRoast = "Full City"
-	//case weightLoss >= 15.1 && weightLoss < 15.6:
-	//	degreeOfRoast = "Full City+"
-	//case weightLoss >= 15.6 && weightLoss < 16.6:
-	//	degreeOfRoast = "French"
-	//case weightLoss >= 16.6:
-	//	degreeOfRoast = "Burnt 🙃️"
-	//default:
-	//	degreeOfRoast = ""
-	//}
-
-	//return fmt.Sprintf("%.2f%% - %s", weightLoss, degreeOfRoast)
 	return fmt.Sprintf("%.2f%%", weightLoss)
 }
 
 func openBrowser() {
-	// wait a second for the web server to start up
 	time.Sleep(1 * time.Second)
 
 	osName := runtime.GOOS

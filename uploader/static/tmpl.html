@@ -11,33 +11,40 @@
     <div class="row py-2">
         <div class="col form-group">
             <label for="beanName" class="form-label">Bean Name</label>
-            <input type="text" class="form-control" name="beanName" value="{{.BeanName}}">
+            <div class="dropdown" id="beanDropdown" style="display:none;">
+                <input type="text" class="form-control" name="beanName" id="beanName" value="{{.BeanName}}" placeholder="Select or type to search..." autocomplete="off">
+                <div class="dropdown-menu w-100" id="beanDropdownMenu" style="max-height:200px;overflow-y:auto;display:none;"></div>
+            </div>
+            {{ if not .BeanName }}
+            <input type="text" class="form-control" name="beanName" id="beanName" value="{{.BeanName}}" placeholder="Type to search from inventory..." autocomplete="off">
+            <div class="dropdown-menu w-100" id="beanDropdownMenu" style="max-height:200px;overflow-y:auto;display:none;"></div>
+            {{ end }}
         </div>
         <div class="col form-group">
             <label for="purchaseUrl" class="form-label">Bean Purchase URL</label>
-            <input class="form-control" type="text" name="purchaseUrl" value="{{.PurchaseUrl}}">
+            <input class="form-control" type="text" name="purchaseUrl" id="purchaseUrl" value="{{.PurchaseUrl}}">
         </div>
     </div>
     <div class="row py-2">
         <div class="col form-group">
             <label for="greenBeanWeight" class="form-label">Green Bean Weight (grams)</label>
-            <input class="form-control" type="text" name="greenBeanWeight" value="{{.GreenBeanWeight}}">
+            <input class="form-control" type="text" name="greenBeanWeight" id="greenBeanWeight" value="{{.GreenBeanWeight}}">
         </div>
         <div class="col form-group">
             <label for="roastBeanWeight" class="form-label">Roasted Bean Weight (grams)</label>
-            <input class="form-control" type="text" name="roastBeanWeight" value="{{.RoastedBeanWeight}}">
+            <input class="form-control" type="text" name="roastBeanWeight" id="roastBeanWeight" value="{{.RoastedBeanWeight}}">
         </div>
     </div>
     <div class="row py-2">
         <div class="col form-group">
             <label class="form-label">Taste Notes</label>
-            <input type="text" class="form-control" name="tasteNotes" value="{{.TasteNotes}}">
+            <input type="text" class="form-control" name="tasteNotes" id="tasteNotes" value="{{.TasteNotes}}">
         </div>
     </div>
     <div class="row py-2">
         <div class="col form-group">
             <label class="form-label">Roast Notes (optional)</label>
-            <textarea class="form-control" rows="5" name="roastNotes">{{.Roastnotes}}</textarea>
+            <textarea class="form-control" rows="5" name="roastNotes" id="roastNotes">{{.Roastnotes}}</textarea>
         </div>
     </div>
     <div class="row py-2">
@@ -56,6 +63,71 @@
         </div>
     </div>
 </form>
+
+<script>
+(function() {
+    const beanInput = document.getElementById('beanName');
+    const menu = document.getElementById('beanDropdownMenu');
+    const purchaseInput = document.getElementById('purchaseUrl');
+    const tasteInput = document.getElementById('tasteNotes');
+    let debounceTimer = null;
+
+    if (!beanInput || !menu) return;
+
+    beanInput.addEventListener('focus', function() {
+        this.setAttribute('placeholder', 'Type to search from inventory...');
+    });
+
+    beanInput.addEventListener('blur', function() {
+        setTimeout(() => { menu.style.display = 'none'; }, 200);
+    });
+
+    beanInput.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            const query = this.value.trim();
+            if (query.length < 2) {
+                menu.style.display = 'none';
+                return;
+            }
+            fetch('/beans?query=' + encodeURIComponent(query))
+                .then(r => r.json())
+                .then(beans => {
+                    if (!beans || beans.length === 0) {
+                        menu.style.display = 'none';
+                        return;
+                    }
+                    menu.innerHTML = '';
+                    beans.forEach(bean => {
+                        const item = document.createElement('button');
+                        item.type = 'button';
+                        item.className = 'dropdown-item';
+                        item.textContent = bean;
+                        item.addEventListener('click', function() {
+                            beanInput.value = bean;
+                            menu.style.display = 'none';
+                            // fetch details and fill
+                            fetch('/beans/fill', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({beanName: bean})
+                            })
+                            .then(r => r.json())
+                            .then(data => {
+                                purchaseInput.value = data.purchaseUrl || '';
+                                tasteInput.value = data.tasteNotes || '';
+                            })
+                            .catch(err => console.error('fill error:', err));
+                        });
+                        menu.appendChild(item);
+                    });
+                    menu.style.display = 'block';
+                })
+                .catch(err => console.error('search error:', err));
+        }, 300);
+    });
+})();
+</script>
 {{end}}
 
 {{define "nav"}}
@@ -72,5 +144,4 @@
         </div>
     </div>
 </nav>
-
 {{end}}

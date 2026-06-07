@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "*": "ask",
+    "read": {
+      "*": "allow"
+    },
+    "skill": {
+      "caveman": "allow"
+    },
+    "edit": {
+      "./**": "allow",
+      "*": "deny"
+    }
+  }
+}
