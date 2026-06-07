@@ -1,5 +1,5 @@
 {{define "inputs"}}
-<form hx-post="/upload" hx-swap="outerHTML" hx-encoding='multipart/form-data'>
+<form hx-post="/upload" hx-swap="outerHTML" hx-encoding='multipart/form-data' id="uploadForm">
     {{ if .Id }}
     <div class="row py-2">
         <div class="col form-group">
@@ -9,16 +9,10 @@
     </div>
     {{ end }}
     <div class="row py-2">
-        <div class="col form-group">
+        <div class="col form-group" style="position:relative;">
             <label for="beanName" class="form-label">Bean Name</label>
-            <div class="dropdown" id="beanDropdown" style="display:none;">
-                <input type="text" class="form-control" name="beanName" id="beanName" value="{{.BeanName}}" placeholder="Select or type to search..." autocomplete="off">
-                <div class="dropdown-menu w-100" id="beanDropdownMenu" style="max-height:200px;overflow-y:auto;display:none;"></div>
-            </div>
-            {{ if not .BeanName }}
-            <input type="text" class="form-control" name="beanName" id="beanName" value="{{.BeanName}}" placeholder="Type to search from inventory..." autocomplete="off">
-            <div class="dropdown-menu w-100" id="beanDropdownMenu" style="max-height:200px;overflow-y:auto;display:none;"></div>
-            {{ end }}
+            <input type="text" class="form-control" name="beanName" id="beanName" placeholder="Type to search from inventory..." autocomplete="off" style="position:relative;z-index:1;">
+            <div id="beanSuggestions" style="position:absolute;top:100%;left:0;right:0;z-index:10;max-height:200px;overflow-y:auto;display:none;"></div>
         </div>
         <div class="col form-group">
             <label for="purchaseUrl" class="form-label">Bean Purchase URL</label>
@@ -66,65 +60,67 @@
 
 <script>
 (function() {
-    const beanInput = document.getElementById('beanName');
-    const menu = document.getElementById('beanDropdownMenu');
-    const purchaseInput = document.getElementById('purchaseUrl');
-    const tasteInput = document.getElementById('tasteNotes');
-    let debounceTimer = null;
+    var beanInput = document.getElementById('beanName');
+    var suggestions = document.getElementById('beanSuggestions');
+    var purchaseInput = document.getElementById('purchaseUrl');
+    var tasteInput = document.getElementById('tasteNotes');
+    var debounceTimer = null;
 
-    if (!beanInput || !menu) return;
-
-    beanInput.addEventListener('focus', function() {
-        this.setAttribute('placeholder', 'Type to search from inventory...');
-    });
-
-    beanInput.addEventListener('blur', function() {
-        setTimeout(() => { menu.style.display = 'none'; }, 200);
-    });
+    if (!beanInput || !suggestions) return;
 
     beanInput.addEventListener('input', function() {
         clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-            const query = this.value.trim();
+        debounceTimer = setTimeout(function() {
+            var query = this.value.trim();
             if (query.length < 2) {
-                menu.style.display = 'none';
+                suggestions.style.display = 'none';
                 return;
             }
+            suggestions.style.display = 'block';
             fetch('/beans?query=' + encodeURIComponent(query))
-                .then(r => r.json())
-                .then(beans => {
-                    if (!beans || beans.length === 0) {
-                        menu.style.display = 'none';
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    suggestions.innerHTML = '';
+                    if (!data.beans || data.beans.length === 0) {
+                        suggestions.style.display = 'none';
                         return;
                     }
-                    menu.innerHTML = '';
-                    beans.forEach(bean => {
-                        const item = document.createElement('button');
-                        item.type = 'button';
-                        item.className = 'dropdown-item';
-                        item.textContent = bean;
-                        item.addEventListener('click', function() {
-                            beanInput.value = bean;
-                            menu.style.display = 'none';
-                            // fetch details and fill
-                            fetch('/beans/fill', {
-                                method: 'POST',
-                                headers: {'Content-Type': 'application/json'},
-                                body: JSON.stringify({beanName: bean})
-                            })
-                            .then(r => r.json())
-                            .then(data => {
-                                purchaseInput.value = data.purchaseUrl || '';
-                                tasteInput.value = data.tasteNotes || '';
-                            })
-                            .catch(err => console.error('fill error:', err));
-                        });
-                        menu.appendChild(item);
-                    });
-                    menu.style.display = 'block';
+                    for (var i = 0; i < data.beans.length; i++) {
+                        (function(bean) {
+                            var item = document.createElement('div');
+                            item.style.padding = '8px 12px';
+                            item.style.cursor = 'pointer';
+                            item.style.background = '#212529';
+                            item.style.color = '#e9ecef';
+                            item.style.fontFamily = 'monospace';
+                            item.style.borderBottom = '1px solid #495057';
+                            item.textContent = bean;
+                            item.onmouseover = function() { this.style.background = '#375a7f'; };
+                            item.onmouseout = function() { this.style.background = '#212529'; };
+                            item.onclick = function() {
+                                beanInput.value = bean;
+                                suggestions.style.display = 'none';
+                                fetch('/beans/fill', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify({beanName: bean})
+                                })
+                                .then(function(r) { return r.json(); })
+                                .then(function(resp) {
+                                    purchaseInput.value = resp.purchaseUrl || '';
+                                    tasteInput.value = resp.tasteNotes || '';
+                                });
+                            };
+                            suggestions.appendChild(item);
+                        })(data.beans[i]);
+                    }
                 })
-                .catch(err => console.error('search error:', err));
-        }, 300);
+                .catch(function(err) { console.error('beans error:', err); });
+        }.bind(this), 200);
+    });
+
+    beanInput.addEventListener('blur', function() {
+        setTimeout(function() { suggestions.style.display = 'none'; }, 200);
     });
 })();
 </script>
