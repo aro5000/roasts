@@ -218,23 +218,34 @@ func beansHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var colA []string
-	br, err := svc.Spreadsheets.Values.BatchGet(sheetsConfig.ID).Ranges(
-		fmt.Sprintf("%s!A:A", sheetsConfig.Name),
-	).Do()
+	ranges := []string{
+		fmt.Sprintf("%s!A:A", sheetsConfig.Name), // Bean Name
+		fmt.Sprintf("%s!D:D", sheetsConfig.Name), // Archived
+	}
+	br, err := svc.Spreadsheets.Values.BatchGet(sheetsConfig.ID).Ranges(ranges...).Do()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("sheets read error: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	if len(br.ValueRanges) > 0 {
-		colA = flattenRange(br.ValueRanges[0])
+	var colA, colD []string
+	if br.ValueRanges != nil {
+		if len(br.ValueRanges) > 0 {
+			colA = flattenRange(br.ValueRanges[0])
+		}
+		if len(br.ValueRanges) > 1 {
+			colD = flattenRange(br.ValueRanges[1])
+		}
 	}
 
 	var beans []string
-	for _, name := range colA {
+	for i, name := range colA {
 		name = strings.TrimSpace(name)
 		if name == "" || strings.EqualFold(name, "Bean Name") {
+			continue
+		}
+		// Only show beans where column D is "false"
+		if !isUnarchived(colD, i) {
 			continue
 		}
 		if query == "" || strings.Contains(strings.ToLower(name), query) {
@@ -270,6 +281,7 @@ func beansFill(w http.ResponseWriter, r *http.Request) {
 	ranges := []string{
 		fmt.Sprintf("%s!A:A", sheetsConfig.Name),
 		fmt.Sprintf("%s!B:B", sheetsConfig.Name),
+		fmt.Sprintf("%s!D:D", sheetsConfig.Name),
 		fmt.Sprintf("%s!E:E", sheetsConfig.Name),
 	}
 	br, err := svc.Spreadsheets.Values.BatchGet(sheetsConfig.ID).Ranges(ranges...).Do()
@@ -278,7 +290,7 @@ func beansFill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var colA, colB, colE []string
+	var colA, colB, colD, colE []string
 	if br.ValueRanges != nil {
 		if len(br.ValueRanges) > 0 {
 			colA = flattenRange(br.ValueRanges[0])
@@ -287,13 +299,19 @@ func beansFill(w http.ResponseWriter, r *http.Request) {
 			colB = flattenRange(br.ValueRanges[1])
 		}
 		if len(br.ValueRanges) > 2 {
-			colE = flattenRange(br.ValueRanges[2])
+			colD = flattenRange(br.ValueRanges[2])
+		}
+		if len(br.ValueRanges) > 3 {
+			colE = flattenRange(br.ValueRanges[3])
 		}
 	}
 
 	for i, name := range colA {
 		name = strings.TrimSpace(name)
 		if name == "" || strings.EqualFold(name, "Bean Name") {
+			continue
+		}
+		if !isUnarchived(colD, i) {
 			continue
 		}
 		if strings.EqualFold(name, req.BeanName) {
@@ -329,6 +347,13 @@ func flattenRange(sr *sheets.ValueRange) []string {
 		}
 	}
 	return result
+}
+
+func isUnarchived(colD []string, i int) bool {
+	if i < len(colD) && colD[i] != "" {
+		return strings.EqualFold(colD[i], "false")
+	}
+	return false
 }
 
 func upload(w http.ResponseWriter, r *http.Request) {
