@@ -106,7 +106,6 @@ type success struct {
 	QrImage string
 }
 
-// defaultFile is a multipart.File that serves the default image
 type defaultFile struct {
 	*bytes.Reader
 }
@@ -218,11 +217,10 @@ func beansHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ranges := []string{
-		fmt.Sprintf("%s!A:A", sheetsConfig.Name), // Bean Name
-		fmt.Sprintf("%s!D:D", sheetsConfig.Name), // Archived
-	}
-	br, err := svc.Spreadsheets.Values.BatchGet(sheetsConfig.ID).Ranges(ranges...).Do()
+	br, err := svc.Spreadsheets.Values.BatchGet(sheetsConfig.ID).Ranges(
+		fmt.Sprintf("%s!A:A", sheetsConfig.Name),
+		fmt.Sprintf("%s!D:D", sheetsConfig.Name),
+	).Do()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("sheets read error: %v", err), http.StatusInternalServerError)
 		return
@@ -244,8 +242,8 @@ func beansHandler(w http.ResponseWriter, r *http.Request) {
 		if name == "" || strings.EqualFold(name, "Bean Name") {
 			continue
 		}
-		// Only show beans where column D is "false"
-		if !isUnarchived(colD, i) {
+		// Only show beans where column D (archived) is FALSE
+		if !isFalse(colD, i) {
 			continue
 		}
 		if query == "" || strings.Contains(strings.ToLower(name), query) {
@@ -278,13 +276,12 @@ func beansFill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ranges := []string{
+	br, err := svc.Spreadsheets.Values.BatchGet(sheetsConfig.ID).Ranges(
 		fmt.Sprintf("%s!A:A", sheetsConfig.Name),
 		fmt.Sprintf("%s!B:B", sheetsConfig.Name),
 		fmt.Sprintf("%s!D:D", sheetsConfig.Name),
 		fmt.Sprintf("%s!E:E", sheetsConfig.Name),
-	}
-	br, err := svc.Spreadsheets.Values.BatchGet(sheetsConfig.ID).Ranges(ranges...).Do()
+	).Do()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("sheets read error: %v", err), http.StatusInternalServerError)
 		return
@@ -311,7 +308,7 @@ func beansFill(w http.ResponseWriter, r *http.Request) {
 		if name == "" || strings.EqualFold(name, "Bean Name") {
 			continue
 		}
-		if !isUnarchived(colD, i) {
+		if !isFalse(colD, i) {
 			continue
 		}
 		if strings.EqualFold(name, req.BeanName) {
@@ -349,11 +346,11 @@ func flattenRange(sr *sheets.ValueRange) []string {
 	return result
 }
 
-func isUnarchived(colD []string, i int) bool {
-	if i < len(colD) && colD[i] != "" {
-		return strings.EqualFold(colD[i], "false")
+func isFalse(col []string, i int) bool {
+	if i >= len(col) {
+		return false
 	}
-	return false
+	return strings.EqualFold(col[i], "false")
 }
 
 func upload(w http.ResponseWriter, r *http.Request) {
@@ -408,7 +405,6 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Beans image
 	{
 		var beansImageFile multipart.File
 		beansImageFile, _, err = r.FormFile("beansImage")
@@ -431,7 +427,6 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Roast data image
 	{
 		var roastDataImageFile multipart.File
 		roastDataImageFile, _, err = r.FormFile("roastDataImage")
