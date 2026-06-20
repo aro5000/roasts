@@ -59,47 +59,69 @@
 </form>
 
 <script>
+// Auto-complete for the bean name input field.
+// Fetches matching beans from /beans and auto-fills purchaseUrl & tasteNotes via /beans/fill.
 (function() {
-    var beanInput = document.getElementById('beanName');
-    var suggestions = document.getElementById('beanSuggestions');
+    // Cache DOM references for form fields and the suggestion container
+    var beanInput     = document.getElementById('beanName');
+    var suggestions   = document.getElementById('beanSuggestions');
     var purchaseInput = document.getElementById('purchaseUrl');
-    var tasteInput = document.getElementById('tasteNotes');
+    var tasteInput    = document.getElementById('tasteNotes');
     var debounceTimer = null;
 
+    // Guard: if required elements are missing, bail out early
     if (!beanInput || !suggestions) return;
 
+    // Listen for typing in the bean name input
     beanInput.addEventListener('input', function() {
+        // Cancel any pending fetch request (debouncing)
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(function() {
             var query = this.value.trim();
+
+            // Hide suggestions if query is too short (prevent unnecessary server calls)
             if (query.length < 2) {
                 suggestions.style.display = 'none';
                 return;
             }
+
+            // Show the container while we await the response
             suggestions.style.display = 'block';
+
+            // Fetch matching beans from the server
             fetch('/beans?query=' + encodeURIComponent(query))
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     suggestions.innerHTML = '';
+
+                    // Hide dropdown if no matches returned
                     if (!data.beans || data.beans.length === 0) {
                         suggestions.style.display = 'none';
                         return;
                     }
+
+                    // Build a suggestion item for each matching bean
                     for (var i = 0; i < data.beans.length; i++) {
                         (function(bean) {
                             var item = document.createElement('div');
-                            item.style.padding = '8px 12px';
-                            item.style.cursor = 'pointer';
-                            item.style.background = '#212529';
-                            item.style.color = '#e9ecef';
-                            item.style.fontFamily = 'monospace';
-                            item.style.borderBottom = '1px solid #495057';
+                            item.style.padding     = '8px 12px';
+                            item.style.cursor      = 'pointer';
+                            item.style.background  = '#212529';
+                            item.style.color       = '#e9ecef';
+                            item.style.fontFamily  = 'monospace';
+                            item.style.borderBottom= '1px solid #495057';
                             item.textContent = bean;
+
+                            // Hover effects for visual feedback
                             item.onmouseover = function() { this.style.background = '#375a7f'; };
-                            item.onmouseout = function() { this.style.background = '#212529'; };
+                            item.onmouseout  = function() { this.style.background = '#212529'; };
+
+                            // On click: select the bean and auto-fill related fields
                             item.onclick = function() {
-                                beanInput.value = bean;
+                                beanInput.value = bean;        // populate the bean name field
                                 suggestions.style.display = 'none';
+
+                                // Fetch extra bean data (purchaseUrl, tasteNotes) from the server
                                 fetch('/beans/fill', {
                                     method: 'POST',
                                     headers: {'Content-Type': 'application/json'},
@@ -108,17 +130,20 @@
                                 .then(function(r) { return r.json(); })
                                 .then(function(resp) {
                                     purchaseInput.value = resp.purchaseUrl || '';
-                                    tasteInput.value = resp.tasteNotes || '';
+                                    tasteInput.value    = resp.tasteNotes    || '';
                                 });
                             };
+
                             suggestions.appendChild(item);
                         })(data.beans[i]);
                     }
                 })
                 .catch(function(err) { console.error('beans error:', err); });
-        }.bind(this), 200);
+
+        }.bind(this), 200);  // Debounce delay: wait 200ms after last keystroke
     });
 
+    // Hide the dropdown when the input loses focus (with a small delay to allow clicks)
     beanInput.addEventListener('blur', function() {
         setTimeout(function() { suggestions.style.display = 'none'; }, 200);
     });
