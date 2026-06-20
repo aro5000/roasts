@@ -201,22 +201,30 @@ func getData(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, d)
 }
 
+
+// beansHandler handles GET /beans queries.
+// It fetches non-archived bean names from the inventory Google Sheet
+// and optionally filters them by a search query parameter.
 func beansHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Only allow GET requests
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
+	// Parse optional case-insensitive search query from URL
 	query := strings.ToLower(r.URL.Query().Get("query"))
 
+	// Lazily initialize and obtain the Google Sheets service
 	svc, err := getSheetsService()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// Fetch beans from column A (bean names) and column D (archived flag)
 	br, err := svc.Spreadsheets.Values.BatchGet(sheetsConfig.ID).Ranges(
 		fmt.Sprintf("%s!A:A", sheetsConfig.Name),
 		fmt.Sprintf("%s!D:D", sheetsConfig.Name),
@@ -226,6 +234,7 @@ func beansHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Flatten the sheet columns into Go slices
 	var colA, colD []string
 	if br.ValueRanges != nil {
 		if len(br.ValueRanges) > 0 {
@@ -236,16 +245,19 @@ func beansHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Build list of beans, filtering out empty rows, headers, and archived entries
 	var beans []string
 	for i, name := range colA {
 		name = strings.TrimSpace(name)
+		// Skip empty rows and the "Bean Name" header row
 		if name == "" || strings.EqualFold(name, "Bean Name") {
 			continue
 		}
-		// Only show beans where column D (archived) is FALSE
+		// Only include beans where column D (archived) is FALSE
 		if !isFalse(colD, i) {
 			continue
 		}
+		// Apply optional case-insensitive search filter
 		if query == "" || strings.Contains(strings.ToLower(name), query) {
 			beans = append(beans, name)
 		}
@@ -254,6 +266,11 @@ func beansHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(beansResponse{Beans: beans})
 }
 
+// beansFill handles POST /beans/fill.
+// It searches the Inventory Google Sheet for a bean matching the name
+// in the request body, then returns an object containing the bean's name,
+// purchase URL (column B), and taste notes (column E). Archived beans are
+// excluded. Returns 404 if no matching bean is found.
 func beansFill(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -276,6 +293,7 @@ func beansFill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Fetch columns A (bean name), B (purchase URL), D (archived flag), E (taste notes)
 	br, err := svc.Spreadsheets.Values.BatchGet(sheetsConfig.ID).Ranges(
 		fmt.Sprintf("%s!A:A", sheetsConfig.Name),
 		fmt.Sprintf("%s!B:B", sheetsConfig.Name),
@@ -305,12 +323,15 @@ func beansFill(w http.ResponseWriter, r *http.Request) {
 
 	for i, name := range colA {
 		name = strings.TrimSpace(name)
+		// Skip empty rows and the header row
 		if name == "" || strings.EqualFold(name, "Bean Name") {
 			continue
 		}
+		// Skip archived beans (D column must be FALSE)
 		if !isFalse(colD, i) {
 			continue
 		}
+		// Found the matching bean (case-insensitive)
 		if strings.EqualFold(name, req.BeanName) {
 			buyUrl := ""
 			taste := ""

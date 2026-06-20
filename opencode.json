@@ -2,19 +2,17 @@
   "$schema": "https://opencode.ai/config.json",
   "permission": {
     "*": "ask",
+    "edit": {
+      "./**": "allow"
+    },
     "read": {
       "*": "allow"
     },
     "skill": {
       "caveman": "allow"
     },
-    "edit": {
-      "./**": "allow",
-      "*": "deny"
-    },
     "glob": {
-      "./**": "allow",
-      "*": "deny"
+      "./**": "allow"
     }
   }
 }
