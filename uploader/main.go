@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"os/exec"
@@ -187,15 +186,20 @@ func getData(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, reload)
 		return
 	}
-	defer dataReader.Close()
-
 	raw, err := io.ReadAll(dataReader)
 	if err != nil {
 		fmt.Fprint(w, reload)
 		return
 	}
 
-	if err = json.Unmarshal(raw, &d); err != nil {
+	err = json.Unmarshal(raw, &d)
+	if err != nil {
+		fmt.Fprint(w, reload)
+		return
+	}
+
+	err = dataReader.Close()
+	if err != nil {
 		fmt.Fprint(w, reload)
 		return
 	}
@@ -379,7 +383,7 @@ func isFalse(col []string, i int) bool {
 
 func upload(w http.ResponseWriter, r *http.Request) {
 	var id string
-	err := r.ParseMultipartForm(100 * 1024 * 1024)
+	err := r.ParseMultipartForm(100 * 1024 * 1024) // 100MB
 	if err != nil {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
 		fmt.Fprint(w, "Upload too large")
@@ -413,6 +417,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	}
 	dataFile := bytes.NewReader(jsonData)
 
+	// upload JSON data
 	dataObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/data.json", id))
 	dataWriter := dataObj.NewWriter(ctx)
 
@@ -429,48 +434,50 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	{
-		var beansImageFile multipart.File
-		beansImageFile, _, err = r.FormFile("beansImage")
-		if err != nil {
-			beansImageFile = defaultFileInstance
-		}
-		beansImgObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/beans-image", id))
-		beansImageWriter := beansImgObj.NewWriter(ctx)
-		_, err = io.Copy(beansImageWriter, beansImageFile)
-		if err != nil {
-			tmpl, _ := template.New("").Parse(inputs + templates)
-			tmpl.Execute(w, data{Error: err.Error()})
-			return
-		}
-		err = beansImageWriter.Close()
-		if err != nil {
-			tmpl, _ := template.New("").Parse(inputs + templates)
-			tmpl.Execute(w, data{Error: err.Error()})
-			return
-		}
+	// Upload beans image
+	var beansImageFile io.Reader
+	beansImageFile, _, err = r.FormFile("beansImage")
+	if err != nil {
+		beansImageFile = bytes.NewReader(defaultImg)
 	}
 
-	{
-		var roastDataImageFile multipart.File
-		roastDataImageFile, _, err = r.FormFile("roastDataImage")
-		if err != nil {
-			roastDataImageFile = defaultFileInstance
-		}
-		roastDataObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/roast-data-image", id))
-		roastDataWriter := roastDataObj.NewWriter(ctx)
-		_, err = io.Copy(roastDataWriter, roastDataImageFile)
-		if err != nil {
-			tmpl, _ := template.New("").Parse(inputs + templates)
-			tmpl.Execute(w, data{Error: err.Error()})
-			return
-		}
-		err = roastDataWriter.Close()
-		if err != nil {
-			tmpl, _ := template.New("").Parse(inputs + templates)
-			tmpl.Execute(w, data{Error: err.Error()})
-			return
-		}
+	beansImgObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/beans-image", id))
+	beansImageWriter := beansImgObj.NewWriter(ctx)
+
+	_, err = io.Copy(beansImageWriter, beansImageFile)
+	if err != nil {
+		tmpl, _ := template.New("").Parse(inputs + templates)
+		tmpl.Execute(w, data{Error: err.Error()})
+		return
+	}
+	err = beansImageWriter.Close()
+	if err != nil {
+		tmpl, _ := template.New("").Parse(inputs + templates)
+		tmpl.Execute(w, data{Error: err.Error()})
+		return
+	}
+
+	// Upload roast data image
+	var roastDataImageFile io.Reader
+	roastDataImageFile, _, err = r.FormFile("roastDataImage")
+	if err != nil {
+		roastDataImageFile = bytes.NewReader(defaultImg)
+	}
+
+	roastDataObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/roast-data-image", id))
+	roastDataWriter := roastDataObj.NewWriter(ctx)
+
+	_, err = io.Copy(roastDataWriter, roastDataImageFile)
+	if err != nil {
+		tmpl, _ := template.New("").Parse(inputs + templates)
+		tmpl.Execute(w, data{Error: err.Error()})
+		return
+	}
+	err = roastDataWriter.Close()
+	if err != nil {
+		tmpl, _ := template.New("").Parse(inputs + templates)
+		tmpl.Execute(w, data{Error: err.Error()})
+		return
 	}
 
 	fullUrl := fmt.Sprintf("%s#%s", baseUrl, id)
@@ -494,6 +501,7 @@ func getShortUuid() string {
 }
 
 func QrBase64String(url string) (string, error) {
+	var png []byte
 	png, err := qrcode.Encode(url, qrcode.Medium, 256)
 	if err != nil {
 		return "", err
@@ -501,6 +509,8 @@ func QrBase64String(url string) (string, error) {
 	return base64.StdEncoding.EncodeToString(png), nil
 }
 
+// take the string values, convert them to floats
+// and return the weight loss and roast level
 func calculateWeightLoss(greenWeight, roastWeight string) string {
 	gw, err := strconv.ParseFloat(greenWeight, 64)
 	if err != nil {
@@ -511,6 +521,34 @@ func calculateWeightLoss(greenWeight, roastWeight string) string {
 		return "unknown"
 	}
 	weightLoss := (gw - rw) / gw * 100
+
+	// for now this doesn't seem very accurate for my roaster,
+	// but I might revisit later
+	// https://library.sweetmarias.com/how-to-calculate-weight-loss-in-coffee-roasting/
+
+	//var degreeOfRoast string
+	//switch {
+	//case weightLoss <= 11.5:
+	//	degreeOfRoast = "1st crack (extremely light)"
+	//case weightLoss >= 11.5 && weightLoss < 12.7:
+	//	degreeOfRoast = "City-"
+	//case weightLoss >= 12.7 && weightLoss < 13.3:
+	//	degreeOfRoast = "City"
+	//case weightLoss >= 13.3 && weightLoss < 14.5:
+	//	degreeOfRoast = "City+"
+	//case weightLoss >= 14.5 && weightLoss < 15.1:
+	//	degreeOfRoast = "Full City"
+	//case weightLoss >= 15.1 && weightLoss < 15.6:
+	//	degreeOfRoast = "Full City+"
+	//case weightLoss >= 15.6 && weightLoss < 16.6:
+	//	degreeOfRoast = "French"
+	//case weightLoss >= 16.6:
+	//	degreeOfRoast = "Burnt 🙃️"
+	//default:
+	//	degreeOfRoast = ""
+	//}
+
+	//return fmt.Sprintf("%.2f%% - %s", weightLoss, degreeOfRoast)
 	return fmt.Sprintf("%.2f%%", weightLoss)
 }
 
