@@ -9,22 +9,8 @@
     "init_hook": [
       "echo '\n\nROAST UPLOADER DEV ENVIRONMENT 😎'",
       "echo '\n\nRun the following to do stuff:'",
-      "echo 'UI:\t\tdevbox run web'",
-      "echo 'Uploader:\tdevbox run uploader'",
-      "echo '\n'",
-      "function _update_ps1() { PS1=\"(devbox) $(powerline-go -cwd-max-depth 3 -error $? -hostname-only-if-ssh )\" }",
-      "PROMPT_COMMAND=\"_update_ps1; $PROMPT_COMMAND\"",
-      "_update_ps1"
-    ],
-    "scripts": {
-      "web": [
-        "open http://localhost:8000",
-        "python -m http.server -d public/"
-      ],
-      "uploader": [
-        "cd uploader",
-        "go run main.go"
-      ]
-    }
+      "echo 'UI:\t\tmake web'",
+      "echo 'Uploader:\tmake uploader'"
+    ]
   }
 }
