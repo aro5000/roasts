@@ -174,6 +174,9 @@ func edit(w http.ResponseWriter, r *http.Request) {
 }
 
 func getData(w http.ResponseWriter, r *http.Request) {
+	reload := `
+	<script>location.reload()</script>
+	`
 	var d data
 
 	id := r.URL.Query().Get("roastId")
@@ -181,19 +184,19 @@ func getData(w http.ResponseWriter, r *http.Request) {
 	dataObj := client.Bucket(bucket).Object(fmt.Sprintf("%s/data.json", id))
 	dataReader, err := dataObj.NewReader(ctx)
 	if err != nil {
-		fmt.Fprint(w, "reload-page")
+		fmt.Fprint(w, reload)
 		return
 	}
 	defer dataReader.Close()
 
 	raw, err := io.ReadAll(dataReader)
 	if err != nil {
-		fmt.Fprint(w, "reload-page")
+		fmt.Fprint(w, reload)
 		return
 	}
 
 	if err = json.Unmarshal(raw, &d); err != nil {
-		fmt.Fprint(w, "reload-page")
+		fmt.Fprint(w, reload)
 		return
 	}
 
