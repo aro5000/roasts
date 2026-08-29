@@ -53,10 +53,20 @@
     </div>
     <div class="row py-2">
         <div class="col">
-            <button type="submit" class="btn btn-primary m-1">Upload</button>
+            <button type="submit" class="btn btn-primary m-1" hx-disabled-elt="this">
+                <span class="spinner-border spinner-border-sm btn-spinner" aria-hidden="true"></span>
+                <span class="btn-label">Upload</span>
+            </button>
         </div>
     </div>
 </form>
+
+<style>
+/* Hide the spinner by default */
+#uploadForm .btn-spinner { display: none; }
+/* Show the spinner when HTMX adds the 'htmx-request' class to the form */
+#uploadForm.htmx-request .btn-spinner { display: inline-block; }
+</style>
 
 <script>
 // Auto-complete for the bean name input field.

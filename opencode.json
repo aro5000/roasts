@@ -13,6 +13,18 @@
     },
     "glob": {
       "./**": "allow"
-    }
+    },
+    "bash": {
+      "find *": "allow",
+      "grep *": "allow",
+      "git diff": "allow",
+      "git diff *": "allow",
+      "git status": "allow",
+      "git status *": "allow",
+      "git grep *": "allow",
+      "cat *": "allow"
+    },
+    "webfetch": "allow",
+    "websearch": "allow"
   }
 }
