@@ -139,6 +139,12 @@ func stripMetadata(f multipart.File) io.Reader {
 }
 
 func main() {
+	if exiftool == "" {
+		fmt.Println("[!] exiftool not found in PATH, image metadata will not be stripped")
+	} else {
+		fmt.Println("[+] exiftool found at", exiftool+", image metadata will be stripped")
+	}
+
 	var err error
 	client, err = storage.NewClient(ctx)
 	if err != nil {
