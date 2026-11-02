@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"os/exec"
@@ -109,15 +110,41 @@ type defaultFile struct {
 	*bytes.Reader
 }
 
-func (d defaultFile) Close() error      { return nil }
-func (d defaultFile) Size() int64       { return int64(len(defaultImg)) }
+func (d defaultFile) Close() error { return nil }
+func (d defaultFile) Size() int64  { return int64(len(defaultImg)) }
 func (d defaultFile) Seek(offset int64, whence int) (int64, error) {
 	return d.Reader.Seek(offset, whence)
 }
 
 var defaultFileInstance = defaultFile{bytes.NewReader(defaultImg)}
 
+// exiftool is set if the exiftool binary is available in PATH
+var exiftool, _ = exec.LookPath("exiftool")
+
+// stripMetadata removes all metadata from an image using exiftool,
+// piping through stdin/stdout. Falls back to the original file if
+// exiftool is unavailable or fails.
+func stripMetadata(f multipart.File) io.Reader {
+	if exiftool == "" {
+		return f
+	}
+	cmd := exec.Command(exiftool, "-all=", "-o", "-", "-")
+	cmd.Stdin = f
+	out, err := cmd.Output()
+	if err != nil || len(out) == 0 {
+		f.Seek(0, io.SeekStart)
+		return f
+	}
+	return bytes.NewReader(out)
+}
+
 func main() {
+	if exiftool == "" {
+		fmt.Println("[!] exiftool not found in PATH, image metadata will not be stripped")
+	} else {
+		fmt.Println("[+] exiftool found at", exiftool+", image metadata will be stripped")
+	}
+
 	var err error
 	client, err = storage.NewClient(ctx)
 	if err != nil {
@@ -207,7 +234,6 @@ func getData(w http.ResponseWriter, r *http.Request) {
 	tmpl, _ := template.New("").Parse(inputs + templates)
 	tmpl.Execute(w, d)
 }
-
 
 // beansHandler handles GET /beans queries.
 // It fetches non-archived bean names from the inventory Google Sheet
@@ -436,8 +462,9 @@ func upload(w http.ResponseWriter, r *http.Request) {
 
 	// Upload beans image
 	var beansImageFile io.Reader
-	beansImageFile, _, err = r.FormFile("beansImage")
-	if err != nil {
+	if f, _, err := r.FormFile("beansImage"); err == nil {
+		beansImageFile = stripMetadata(f)
+	} else {
 		beansImageFile = bytes.NewReader(defaultImg)
 	}
 
@@ -459,8 +486,9 @@ func upload(w http.ResponseWriter, r *http.Request) {
 
 	// Upload roast data image
 	var roastDataImageFile io.Reader
-	roastDataImageFile, _, err = r.FormFile("roastDataImage")
-	if err != nil {
+	if f, _, err := r.FormFile("roastDataImage"); err == nil {
+		roastDataImageFile = stripMetadata(f)
+	} else {
 		roastDataImageFile = bytes.NewReader(defaultImg)
 	}
 

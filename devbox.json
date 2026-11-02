@@ -3,7 +3,8 @@
   "packages": [
     "curl@latest",
     "go@latest",
-    "python@latest"
+    "python@latest",
+    "exiftool@latest"
   ],
   "shell": {
     "init_hook": [
